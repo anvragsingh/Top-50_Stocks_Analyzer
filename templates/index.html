@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Top-50 Stock Analyzer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            color: whitesmoke;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            color: whitesmoke;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 3rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 8px rgba(254, 248, 248, 0.055);
+            background: linear-gradient(135deg, #64b5f6 0%, #42a5f5 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .no-shadow {
+             text-shadow: none;
+        
+        }
+
+
+        .header p {
+            color: #b0bec5;
+            font-size: 1.1rem;
+        }
+
+        .real-time-ticker {
+            background: rgba(30, 30, 46, 0.9);
+            border: 1px solid rgba(100, 181, 246, 0.2);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            backdrop-filter: blur(10px);
+            overflow-x: auto;
+        }
+
+        .ticker-container {
+            display: flex;
+            gap: 20px;
+            min-width: max-content;
+            animation: scroll 100s linear infinite;
+        }
+
+        .stock-card {
+            background: linear-gradient(135deg, #2a2a40 0%, #1e1e30 100%);
+            border: 1px solid rgba(100, 181, 246, 0.3);
+            border-radius: 10px;
+            padding: 15px;
+            min-width: 200px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+            transition: all 0.3s ease;
+        }
+
+        .stock-card:hover {
+            transform: translateY(-5px);
+            border-color: rgba(100, 181, 246, 0.6);
+            box-shadow: 0 8px 32px rgba(100, 181, 246, 0.2);
+        }
+
+        .stock-symbol {
+            font-weight: bold;
+            font-size: 1.2rem;
+            color: #64b5f6;
+        }
+
+        .stock-price {
+            font-size: 1.4rem;
+            font-weight: bold;
+            margin: 5px 0;
+            color: #ffffff;
+        }
+
+        .price-positive {
+            color: #4caf50;
+        }
+
+        .price-negative {
+            color: #f44336;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .control-panel {
+            background: rgba(30, 30, 46, 0.95);
+            border: 1px solid rgba(100, 181, 246, 0.2);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            backdrop-filter: blur(10px);
+            height: fit-content;
+        }
+
+        .control-panel h2 {
+            color: #64b5f6;
+            margin-bottom: 20px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #b0bec5;
+        }
+
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid rgba(100, 181, 246, 0.3);
+            border-radius: 8px;
+            font-size: 16px;
+            background: rgba(30, 30, 46, 0.8);
+            color: #e4e6ea;
+            transition: all 0.3s ease;
+        }
+
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #64b5f6;
+            box-shadow: 0 0 10px rgba(100, 181, 246, 0.3);
+        }
+
+        .form-group input::placeholder {
+            color: #78909c;
+        }
+
+        .stock-categories {
+            margin-bottom: 20px;
+        }
+
+        .category-title {
+            font-weight: bold;
+            color: #64b5f6;
+            margin-bottom: 10px;
+            border-bottom: 2px solid #64b5f6;
+            padding-bottom: 5px;
+        }
+
+        .stock-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+
+        .stock-btn {
+            background: rgba(30, 30, 46, 0.8);
+            border: 2px solid rgba(100, 181, 246, 0.4);
+            color: #b0bec5;
+            padding: 8px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 14px;
+        }
+
+        .stock-btn:hover {
+            background: linear-gradient(135deg, #64b5f6 0%, #42a5f5 100%);
+            color: white;
+            border-color: #64b5f6;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(100, 181, 246, 0.3);
+        }
+
+        .indicators-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+            accent-color: #64b5f6;
+        }
+
+        .checkbox-group label {
+            margin-bottom: 0;
+            cursor: pointer;
+        }
+
+        .analyze-btn {
+            width: 100%;
+            background: linear-gradient(135deg, #145e9a 0%, #42a5f5 100%);
+            color: white;
+            border: none;
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 20px rgba(100, 181, 246, 0.3);
+        }
+
+        .analyze-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 32px rgba(100, 181, 246, 0.4);
+        }
+
+        .results-panel {
+            background: rgba(30, 30, 46, 0.95);
+            border: 1px solid rgba(100, 181, 246, 0.2);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            backdrop-filter: blur(10px);
+        }
+
+        .results-panel h2 {
+            color: #64b5f6;
+            margin-bottom: 20px;
+        }
+
+        .stock-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .info-card {
+            background: rgba(40, 40, 60, 0.8);
+            border: 1px solid rgba(100, 181, 246, 0.2);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .info-card:hover {
+            border-color: rgba(100, 181, 246, 0.5);
+            transform: translateY(-2px);
+        }
+
+        .info-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #64b5f6;
+        }
+
+        .info-label {
+            color: #90a4ae;
+            font-size: 0.9rem;
+            margin-top: 5px;
+        }
+
+        .chart-container {
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .chart-container img {
+            max-width: 100%;
+            border-radius: 10px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            border: 1px solid rgba(100, 181, 246, 0.2);
+        }
+
+        .signals-table {
+            overflow-x: auto;
+            margin-top: 20px;
+        }
+
+        .signals-table h3 {
+            color: #186aae;
+            margin-bottom: 15px;
+        }
+
+        .signals-table table {
+            width: 100%;
+            border-collapse: collapse;
+            background: rgba(40, 40, 60, 0.8);
+            border-radius: 10px;
+            overflow: hidden;
+            border: 1px solid rgba(100, 181, 246, 0.2);
+        }
+
+        .signals-table th, .signals-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid rgba(100, 181, 246, 0.2);
+            color: #214ca2;
+        }
+
+        .signals-table th {
+            background: linear-gradient(135deg, #216dab 0%, #42a5f5 100%);
+            color: white;
+        }
+
+        .signals-table tr:hover {
+            background: rgba(100, 181, 246, 0.1);
+        }
+
+        .error {
+            background: rgba(244, 67, 54, 0.2);
+            color: #ffcdd2;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            border: 1px solid rgba(244, 67, 54, 0.3);
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #90a4ae;
+        }
+
+        .loading h3 {
+            color: #64b5f6;
+            margin-bottom: 15px;
+        }
+
+        .loading ul {
+            text-align: left;
+            margin-top: 20px;
+            color: #b0bec5;
+        }
+
+        .loading li {
+            margin-bottom: 8px;
+        }
+
+        @keyframes scroll {
+             0% { transform: translateX(0); }
+             100% { transform: translateX(-100%); }
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+            
+            .ticker-track {
+                display: flex;
+                animation: scroll 30s linear infinite;
+                white-space: nowrap;
+                width: fit-content;
+            }
+
+            .ticker-container {
+                animation: none;
+            }
+        }
+
+        /* Scrollbar styling for dark theme */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(30, 30, 46, 0.5);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(100, 181, 246, 0.5);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(100, 181, 246, 0.7);
+        }
+
+        /* Selection styling */
+        ::selection {
+            background: rgba(100, 181, 246, 0.3);
+            color: #ffffff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1> <span class="no-shadow">📈</span> Top-50 Stock Analyzer</h1>
+            <p>Advanced Technical Analysis with Live Market Data</p>
+        </div>
+
+        <div class="real-time-ticker">
+            <div class="ticker-container" id="tickerContainer">
+                <!-- Real-time stock data will be populated here -->
+                <div class="stock-card">
+                    <div class="stock-symbol">Loading...</div>
+                    <div class="stock-price">Real-time data</div>
+                    <div>Updating...</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="ticker-track">
+            {% for stock in ticker_data %}
+            <div class="ticker-card">...</div>
+            {% endfor %}
+            {% for stock in ticker_data %}
+            <div class="ticker-card">...</div> <!-- duplicate -->
+            {% endfor %}
+        </div>
+
+        <div class="main-content">
+            <div class="control-panel">
+                <h2>Analysis Configuration</h2>
+                <form method="POST" action="/analyze">
+                    <div class="form-group">
+                        <label for="ticker">Stock Symbol:</label>
+                        <input type="text" id="ticker" name="ticker" placeholder="Enter ticker (e.g., AAPL)" required>
+                         <button type="submit" class="analyze-btn" style="margin-top: 10px;">🔍 Analyze Stock</button>
+                        <!-- <button type="submit" formaction="/export_pdf" class="analyze-btn" style="margin-top: 10px;">📄 Export as PDF</button> -->
+                    </div>
+
+                    <div class="form-group">
+                        <label for="period">Time Period:</label>
+                        <select id="period" name="period">
+                            <option value="1mo" selected>1 Month</option>
+                            <option value="3mo">3 Months</option>
+                            <option value="6mo" >6 Months</option>
+                            <option value="1y">1 Year</option>
+                            <option value="2y">2 Years</option>
+                            <option value="5y">5 Years</option>
+                        </select>
+                    </div>
+
+                    <div class="stock-categories">
+                        {% for sector, stocks in stocks.items() %}
+                        <div class="category-title">{{ sector }}</div>
+                        <div class="stock-buttons">
+                            {% for stock in stocks %}
+                            <button type="button" class="stock-btn" onclick="selectStock('{{ stock }}')">{{ stock }}</button>
+                            {% endfor %}
+                        </div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="form-group">
+                        <label>Technical Indicators:</label>
+                        <div class="indicators-group">
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="sma" name="indicators" value="sma" checked>
+                                <label for="sma">Moving Averages</label>
+                            </div>
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="bollinger" name="indicators" value="bollinger">
+                                <label for="bollinger">Bollinger Bands</label>
+                            </div>
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="signals" name="indicators" value="signals" checked>
+                                <label for="signals">Buy/Sell Signals</label>
+                            </div>
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="macd" name="indicators" value="macd">
+                                <label for="macd">MACD & RSI</label>
+                            </div>
+                        </div>
+                    
+<div class="form-group">
+    <label>Optional Features:</label>
+    <div class="checkbox-group">
+        <input type="checkbox" id="prediction" name="features" value="prediction">
+        <label for="prediction">Enable Machine Learning Prediction</label>
+    </div>
+</div>
+</div>
+                </form>
+            </div>
+
+            <div class="results-panel">
+                {% if error %}
+                    <div class="error">{{ error }}</div>
+                {% elif ticker %}
+                    <h2>Analysis Results for {{ ticker }}</h2>
+                    
+                    {% if company_name %}
+                    <div class="stock-info">
+                        <div class="info-card">
+                            <div class="info-value">${{ current_price }}</div>
+                            <div class="info-label">Current Price</div>
+                        </div>
+                        <div class="info-card">
+                            <div class="info-value">{{ volume }}</div>
+                            <div class="info-label">Volume</div>
+                        </div>
+                        <div class="info-card">
+                            <div class="info-value">{{ volatility }}</div>
+                            <div class="info-label">Volatility</div>
+                        </div>
+                        <div class="info-card">
+                            <div class="info-value">{{ sharpe_ratio }}</div>
+                            <div class="info-label">Sharpe Ratio</div>
+                        </div>
+                        <div class="info-card">
+                            <div class="info-value">{{ rsi }}</div>
+                            <div class="info-label">RSI</div>
+                        </div>
+                        <div class="info-card">
+                            <div class="info-value">{{ sector }}</div>
+                            <div class="info-label">Sector</div>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    {% if image %}
+                    <div class="chart-container">
+                        <img src="{{ image }}" alt="Stock Analysis Chart">
+                    </div>
+                    {% endif %}
+{% if prediction_results %}
+<div class="signals-table">
+    <h3>📉 Prediction Summary</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Model</th>
+                <th>Predicted Price</th>
+                <th>R² Score</th>
+                <th>RMSE</th>
+                <th>MAE</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for model, value in prediction_results.predictions.items() %}
+            <tr>
+                <td>{{ model }} {% if model == prediction_results.best_model %}⭐{% endif %}</td>
+                <td>${{ "%.2f"|format(value) }}</td>
+                <td>{{ "%.2f"|format(prediction_results.model_scores[model]['R2']) }}</td>
+                <td>{{ "%.2f"|format(prediction_results.model_scores[model]['RMSE']) }}</td>
+                <td>{{ "%.2f"|format(prediction_results.model_scores[model]['MAE']) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <p style="margin-top: 10px;">
+        📊 <strong>Average Predicted Price:</strong> ${{ prediction_results.average_prediction }}<br>
+        🔺 <strong>Change from Current:</strong> {{ prediction_results.change_percent }}%
+    </p>
+</div>
+{% endif %}
+
+{% if signals %}
+<div class="signals-table">
+    <h3>📌 Technical Signals</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Type</th>
+                <th>Message</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for signal in signals %}
+            <tr>
+                <td>{{ signal.type|capitalize }}</td>
+                <td>{{ signal.message }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+
+                    {% if recent_signals %}
+                    <div class="signals-table">
+                        <h3>Recent Trading Signals</h3>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Signal</th>
+                                    <th>Price</th>
+                                    <th>SMA20</th>
+                                    <th>SMA50</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for signal in recent_signals %}
+                                <tr>
+                                    <td>{{ signal.Date.strftime('%Y-%m-%d') if signal.Date else 'N/A' }}</td>
+                                    <td>
+                                        {% if signal.Position == 1 %}
+                                            <span style="color: #4caf50;">🟢 BUY</span>
+                                        {% elif signal.Position == -1 %}
+                                            <span style="color: #f44336;">🔴 SELL</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>${{ "%.2f"|format(signal.Close) if signal.Close else 'N/A' }}</td>
+                                    <td>${{ "%.2f"|format(signal.SMA20) if signal.SMA20 else 'N/A' }}</td>
+                                    <td>${{ "%.2f"|format(signal.SMA50) if signal.SMA50 else 'N/A' }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% endif %}
+                {% else %}
+                    <div class="loading">
+                        <h3>Welcome to Top-50 Stock Analyzer</h3>
+                        <p>Select a stock from the categories or enter a ticker symbol to begin analysis.</p>
+                        <p>The system will provide comprehensive technical analysis including:</p>
+                        <ul style="text-align: left; margin-top: 20px;">
+                            <li>📊 Multiple Moving Averages (SMA20, SMA50, SMA200)</li>
+                            <li>📈 MACD and RSI indicators</li>
+                            <li>🎯 Bollinger Bands</li>
+                            <li>💡 Buy/Sell signal detection</li>
+                            <li>📋 Performance metrics and volatility analysis</li>
+                        </ul>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function selectStock(symbol) {
+            document.getElementById('ticker').value = symbol;
+        }
+
+        function updateRealTimeData() {
+            fetch('/realtime')
+                .then(response => response.json())
+                .then(data => {
+                    const container = document.getElementById('tickerContainer');
+                    container.innerHTML = '';
+                    
+                    // Create cards for each stock
+                    Object.values(data).forEach(stock => {
+                        const card = document.createElement('div');
+                        card.className = 'stock-card';
+                        
+                        const changeClass = stock.change >= 0 ? 'price-positive' : 'price-negative';
+                        const changeSymbol = stock.change >= 0 ? '+' : '';
+                        
+                        card.innerHTML = `
+                            <div class="stock-symbol">${stock.symbol}</div>
+                            <div class="stock-price ${changeClass}">$${stock.price}</div>
+                            <div class="${changeClass}">
+                                ${changeSymbol}${stock.change} (${changeSymbol}${stock.change_percent.toFixed(2)}%)
+                            </div>
+                            <div style="font-size: 0.8rem; color: #78909c;">
+                                Vol: ${stock.volume.toLocaleString()} | ${stock.timestamp}
+                            </div>
+                        `;
+                        container.appendChild(card);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error fetching real-time data:', error);
+                });
+        }
+
+        // Update real-time data every 30 seconds
+        setInterval(updateRealTimeData, 30000);
+        
+        // Initial load
+        setTimeout(updateRealTimeData, 2000);
+
+        // Add click handlers to stock cards for quick analysis
+        document.addEventListener('click', function(e) {
+            if (e.target.closest('.stock-card')) {
+                const symbol = e.target.closest('.stock-card').querySelector('.stock-symbol').textContent;
+                if (symbol && symbol !== 'Loading...') {
+                    document.getElementById('ticker').value = symbol;
+                }
+            }
+        });
+
+        // Add loading animation for form submission
+        document.querySelector('form').addEventListener('submit', function(e) {
+            const btn = document.querySelector('.analyze-btn');
+            btn.innerHTML = '🔄 Analyzing...';
+            btn.disabled = true;
+        });
+
+        // Stock search functionality
+        document.getElementById('ticker').addEventListener('input', function(e) {
+            const value = e.target.value.toUpperCase();
+            e.target.value = value;
+        });
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.key === 'Enter') {
+                document.querySelector('form').submit();
+            }
+        });
+
+        // Add tooltips for indicators
+        const indicators = {
+            'sma': 'Simple Moving Averages help identify trend direction',
+            'bollinger': 'Bollinger Bands show price volatility and potential reversal points',
+            'signals': 'Buy/Sell signals based on moving average crossovers',
+            'macd': 'MACD and RSI provide momentum and overbought/oversold conditions'
+        };
+
+        Object.keys(indicators).forEach(id => {
+            const checkbox = document.getElementById(id);
+            if (checkbox) {
+                checkbox.title = indicators[id];
+            }
+        });
+    </script>
+</body>
+</html>

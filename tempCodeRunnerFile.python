@@ -1,0 +1,466 @@
+import numpy as np
+import pandas as pd
+import warnings
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from sklearn.model_selection import TimeSeriesSplit
+from sklearn.linear_model import LinearRegression
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
+import matplotlib.pyplot as plt
+import seaborn as sns
+from typing import Tuple, Dict, List, Optional
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+class StockDataValidator:
+    """Validates stock data quality and completeness."""
+    
+    @staticmethod
+    def validate_dataframe(df: pd.DataFrame, required_columns: List[str]) -> bool:
+        """Validate that DataFrame has required columns and reasonable data."""
+        try:
+            # Check required columns exist
+            missing_cols = [col for col in required_columns if col not in df.columns]
+            if missing_cols:
+                raise ValueError(f"Missing required columns: {missing_cols}")
+            
+            # Check for sufficient data
+            if len(df) < 50:
+                raise ValueError("Insufficient data: need at least 50 rows for meaningful analysis")
+            
+            # Check for reasonable price values
+            price_cols = ['open', 'high', 'low', 'close']
+            for col in price_cols:
+                if col in df.columns:
+                    if (df[col] <= 0).any():
+                        raise ValueError(f"Invalid {col} prices: found non-positive values")
+                    if (df[col] > 100000).any():
+                        logger.warning(f"Very high {col} prices detected - please verify data quality")
+            
+            # Check volume if present
+            if 'volume' in df.columns:
+                if (df['volume'] < 0).any():
+                    raise ValueError("Invalid volume: found negative values")
+            
+            logger.info("Data validation passed")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Data validation failed: {e}")
+            raise
+
+class TechnicalIndicators:
+    """Calculate various technical indicators for stock analysis."""
+    
+    @staticmethod
+    def moving_averages(df: pd.DataFrame, price_col: str = 'close') -> pd.DataFrame:
+        """Add multiple moving averages."""
+        df = df.copy()
+        periods = [5, 10, 20, 50, 100]
+        
+        for period in periods:
+            df[f'MA_{period}'] = df[price_col].rolling(window=period).mean()
+            
+        # Add exponential moving averages
+        df['EMA_12'] = df[price_col].ewm(span=12).mean()
+        df['EMA_26'] = df[price_col].ewm(span=26).mean()
+        
+        return df
+    
+    @staticmethod
+    def rsi(df: pd.DataFrame, price_col: str = 'close', window: int = 14) -> pd.Series:
+        """Calculate Relative Strength Index."""
+        delta = df[price_col].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
+        rs = gain / loss
+        rsi = 100 - (100 / (1 + rs))
+        return rsi
+    
+    @staticmethod
+    def macd(df: pd.DataFrame, price_col: str = 'close') -> Tuple[pd.Series, pd.Series, pd.Series]:
+        """Calculate MACD (Moving Average Convergence Divergence)."""
+        ema_12 = df[price_col].ewm(span=12).mean()
+        ema_26 = df[price_col].ewm(span=26).mean()
+        macd_line = ema_12 - ema_26
+        signal_line = macd_line.ewm(span=9).mean()
+        histogram = macd_line - signal_line
+        return macd_line, signal_line, histogram
+    
+    @staticmethod
+    def bollinger_bands(df: pd.DataFrame, price_col: str = 'close', window: int = 20, std_dev: int = 2) -> Tuple[pd.Series, pd.Series, pd.Series]:
+        """Calculate Bollinger Bands."""
+        rolling_mean = df[price_col].rolling(window=window).mean()
+        rolling_std = df[price_col].rolling(window=window).std()
+        upper_band = rolling_mean + (rolling_std * std_dev)
+        lower_band = rolling_mean - (rolling_std * std_dev)
+        return upper_band, lower_band, rolling_mean
+    
+    @staticmethod
+    def stochastic_oscillator(df: pd.DataFrame, k_window: int = 14, d_window: int = 3) -> Tuple[pd.Series, pd.Series]:
+        """Calculate Stochastic Oscillator."""
+        lowest_low = df['low'].rolling(window=k_window).min()
+        highest_high = df['high'].rolling(window=k_window).max()
+        k_percent = 100 * ((df['close'] - lowest_low) / (highest_high - lowest_low))
+        d_percent = k_percent.rolling(window=d_window).mean()
+        return k_percent, d_percent
+    
+    @staticmethod
+    def williams_r(df: pd.DataFrame, window: int = 14) -> pd.Series:
+        """Calculate Williams %R."""
+        highest_high = df['high'].rolling(window=window).max()
+        lowest_low = df['low'].rolling(window=window).min()
+        williams_r = -100 * ((highest_high - df['close']) / (highest_high - lowest_low))
+        return williams_r
+    
+    @staticmethod
+    def volume_indicators(df: pd.DataFrame) -> pd.DataFrame:
+        """Add volume-based indicators."""
+        df = df.copy()
+        
+        # Volume moving averages
+        df['Volume_MA_10'] = df['volume'].rolling(window=10).mean()
+        df['Volume_MA_30'] = df['volume'].rolling(window=30).mean()
+        
+        # Volume Rate of Change
+        df['Volume_ROC'] = df['volume'].pct_change(periods=10) * 100
+        
+        # On Balance Volume
+        df['OBV'] = (np.sign(df['close'].diff()) * df['volume']).fillna(0).cumsum()
+        
+        return df
+
+class AdvancedStockForecaster:
+    """Advanced stock price forecasting with technical indicators and time series considerations."""
+    
+    def __init__(self, forecast_horizon: int = 5, test_size: float = 0.2):
+        self.forecast_horizon = forecast_horizon
+        self.test_size = test_size
+        self.scaler = StandardScaler()
+        self.models = {}
+        self.feature_columns = []
+        self.results = {}
+        
+    def prepare_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Prepare comprehensive feature set with technical indicators."""
+        # Validate data first
+        required_cols = ['open', 'high', 'low', 'close']
+        StockDataValidator.validate_dataframe(df, required_cols)
+        
+        df = df.copy()
+        df = df.sort_values('date' if 'date' in df.columns else df.index)
+        
+        # Add basic price features
+        df['price_change'] = df['close'].pct_change()
+        df['price_change_lag1'] = df['price_change'].shift(1)
+        df['price_change_lag2'] = df['price_change'].shift(2)
+        df['high_low_ratio'] = df['high'] / df['low']
+        df['open_close_ratio'] = df['open'] / df['close']
+        
+        # Add moving averages
+        df = TechnicalIndicators.moving_averages(df)
+        
+        # Add RSI
+        df['RSI'] = TechnicalIndicators.rsi(df)
+        
+        # Add MACD
+        macd, signal, histogram = TechnicalIndicators.macd(df)
+        df['MACD'] = macd
+        df['MACD_Signal'] = signal
+        df['MACD_Histogram'] = histogram
+        
+        # Add Bollinger Bands
+        bb_upper, bb_lower, bb_middle = TechnicalIndicators.bollinger_bands(df)
+        df['BB_Upper'] = bb_upper
+        df['BB_Lower'] = bb_lower
+        df['BB_Middle'] = bb_middle
+        df['BB_Width'] = (bb_upper - bb_lower) / bb_middle
+        df['BB_Position'] = (df['close'] - bb_lower) / (bb_upper - bb_lower)
+        
+        # Add Stochastic Oscillator
+        if 'low' in df.columns and 'high' in df.columns:
+            stoch_k, stoch_d = TechnicalIndicators.stochastic_oscillator(df)
+            df['Stoch_K'] = stoch_k
+            df['Stoch_D'] = stoch_d
+            df['Williams_R'] = TechnicalIndicators.williams_r(df)
+        
+        # Add volume indicators if volume data is available
+        if 'volume' in df.columns:
+            df = TechnicalIndicators.volume_indicators(df)
+        
+        # Add volatility measures
+        df['Volatility_10'] = df['close'].rolling(window=10).std()
+        df['Volatility_30'] = df['close'].rolling(window=30).std()
+        
+        # Add price momentum
+        df['Momentum_5'] = df['close'] / df['close'].shift(5) - 1
+        df['Momentum_10'] = df['close'] / df['close'].shift(10) - 1
+        
+        # Add target variable (future prices)
+        df['target'] = df['close'].shift(-self.forecast_horizon)
+        
+        logger.info(f"Created {len(df.columns)} features")
+        return df
+    
+    def select_features(self, df: pd.DataFrame) -> List[str]:
+        """Select relevant features for modeling."""
+        # Exclude non-feature columns
+        exclude_cols = ['date', 'symbol', 'target', 'open', 'high', 'low', 'close', 'volume']
+        if 'Unnamed: 0' in df.columns:
+            exclude_cols.append('Unnamed: 0')
+        
+        feature_cols = [col for col in df.columns if col not in exclude_cols]
+        
+        # Remove features with too many NaN values
+        nan_threshold = 0.3  # Remove features with more than 30% NaN
+        feature_cols = [col for col in feature_cols 
+                       if df[col].isna().sum() / len(df) < nan_threshold]
+        
+        logger.info(f"Selected {len(feature_cols)} features for modeling")
+        return feature_cols
+    
+    def prepare_time_series_data(self, df: pd.DataFrame) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Prepare data with proper time series considerations."""
+        # Remove rows with NaN in target or features
+        df_clean = df.dropna()
+        
+        if len(df_clean) < 50:
+            raise ValueError("Insufficient clean data after removing NaN values")
+        
+        self.feature_columns = self.select_features(df_clean)
+        
+        X = df_clean[self.feature_columns].values
+        y = df_clean['target'].values
+        
+        # Scale features
+        X_scaled = self.scaler.fit_transform(X)
+        
+        # Prepare recent data for forecasting
+        X_recent = X_scaled[-self.forecast_horizon:]
+        
+        # Remove recent data from training set
+        X_train_test = X_scaled[:-self.forecast_horizon]
+        y_train_test = y[:-self.forecast_horizon]
+        
+        logger.info(f"Prepared data: {X_train_test.shape[0]} samples, {X_train_test.shape[1]} features")
+        return X_train_test, y_train_test, X_recent
+    
+    def train_models(self, X: np.ndarray, y: np.ndarray) -> Dict:
+        """Train multiple models and compare performance."""
+        # Use TimeSeriesSplit for proper cross-validation
+        tscv = TimeSeriesSplit(n_splits=5)
+        
+        models_config = {
+            'Linear Regression': LinearRegression(),
+            'Random Forest': RandomForestRegressor(n_estimators=100, max_depth=10, random_state=42),
+            'Gradient Boosting': GradientBoostingRegressor(n_estimators=100, max_depth=6, random_state=42)
+        }
+        
+        model_scores = {}
+        
+        for name, model in models_config.items():
+            scores = []
+            for train_idx, val_idx in tscv.split(X):
+                X_train, X_val = X[train_idx], X[val_idx]
+                y_train, y_val = y[train_idx], y[val_idx]
+                
+                model.fit(X_train, y_train)
+                score = model.score(X_val, y_val)
+                scores.append(score)
+            
+            avg_score = np.mean(scores)
+            model_scores[name] = avg_score
+            
+            # Train on full dataset
+            model.fit(X, y)
+            self.models[name] = model
+            
+            logger.info(f"{name} - Average CV Score: {avg_score:.4f}")
+        
+        # Select best model
+        best_model_name = max(model_scores, key=model_scores.get)
+        logger.info(f"Best model: {best_model_name} (Score: {model_scores[best_model_name]:.4f})")
+        
+        return model_scores
+    
+    def evaluate_models(self, X_test: np.ndarray, y_test: np.ndarray) -> Dict:
+        """Comprehensive model evaluation."""
+        evaluation_results = {}
+        
+        for name, model in self.models.items():
+            y_pred = model.predict(X_test)
+            
+            metrics = {
+                'R2_Score': r2_score(y_test, y_pred),
+                'RMSE': np.sqrt(mean_squared_error(y_test, y_pred)),
+                'MAE': mean_absolute_error(y_test, y_pred),
+                'MAPE': np.mean(np.abs((y_test - y_pred) / y_test)) * 100
+            }
+            
+            evaluation_results[name] = metrics
+            
+            logger.info(f"\n{name} Performance:")
+            for metric, value in metrics.items():
+                logger.info(f"  {metric}: {value:.4f}")
+        
+        return evaluation_results
+    
+    def make_forecasts(self, X_recent: np.ndarray) -> Dict:
+        """Make forecasts using all trained models."""
+        forecasts = {}
+        
+        for name, model in self.models.items():
+            forecast = model.predict(X_recent)
+            forecasts[name] = forecast
+            
+            logger.info(f"{name} Forecast for next {self.forecast_horizon} days: {forecast}")
+        
+        return forecasts
+    
+    def plot_results(self, df: pd.DataFrame, forecasts: Dict):
+        """Plot historical data and forecasts."""
+        plt.figure(figsize=(15, 10))
+        
+        # Plot 1: Historical prices with moving averages
+        plt.subplot(2, 2, 1)
+        plt.plot(df['close'].tail(100), label='Close Price', alpha=0.7)
+        if 'MA_20' in df.columns:
+            plt.plot(df['MA_20'].tail(100), label='MA 20', alpha=0.7)
+        if 'MA_50' in df.columns:
+            plt.plot(df['MA_50'].tail(100), label='MA 50', alpha=0.7)
+        plt.title('Historical Prices with Moving Averages')
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        
+        # Plot 2: RSI
+        plt.subplot(2, 2, 2)
+        if 'RSI' in df.columns:
+            plt.plot(df['RSI'].tail(100))
+            plt.axhline(y=70, color='r', linestyle='--', alpha=0.7, label='Overbought')
+            plt.axhline(y=30, color='g', linestyle='--', alpha=0.7, label='Oversold')
+            plt.title('RSI (Relative Strength Index)')
+            plt.legend()
+            plt.grid(True, alpha=0.3)
+        
+        # Plot 3: MACD
+        plt.subplot(2, 2, 3)
+        if 'MACD' in df.columns:
+            plt.plot(df['MACD'].tail(100), label='MACD')
+            plt.plot(df['MACD_Signal'].tail(100), label='Signal')
+            plt.bar(range(len(df['MACD_Histogram'].tail(100))), 
+                    df['MACD_Histogram'].tail(100), alpha=0.3, label='Histogram')
+            plt.title('MACD')
+            plt.legend()
+            plt.grid(True, alpha=0.3)
+        
+        # Plot 4: Forecasts comparison
+        plt.subplot(2, 2, 4)
+        model_names = list(forecasts.keys())
+        x_pos = np.arange(len(model_names))
+        avg_forecasts = [np.mean(forecasts[name]) for name in model_names]
+        
+        plt.bar(x_pos, avg_forecasts, alpha=0.7)
+        plt.xlabel('Models')
+        plt.ylabel('Average Forecast Price')
+        plt.title(f'Average Forecast Comparison ({self.forecast_horizon} days)')
+        plt.xticks(x_pos, model_names, rotation=45)
+        plt.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        plt.show()
+    
+    def fit_predict(self, df: pd.DataFrame) -> Dict:
+        """Main method to fit models and make predictions."""
+        try:
+            # Prepare features
+            df_features = self.prepare_features(df)
+            
+            # Prepare time series data
+            X_train_test, y_train_test, X_recent = self.prepare_time_series_data(df_features)
+            
+            # Split data using time series split (last 20% for testing)
+            split_idx = int(len(X_train_test) * (1 - self.test_size))
+            X_train, X_test = X_train_test[:split_idx], X_train_test[split_idx:]
+            y_train, y_test = y_train_test[:split_idx], y_train_test[split_idx:]
+            
+            # Train models
+            cv_scores = self.train_models(X_train, y_train)
+            
+            # Evaluate models
+            evaluation_results = self.evaluate_models(X_test, y_test)
+            
+            # Make forecasts
+            forecasts = self.make_forecasts(X_recent)
+            
+            # Plot results
+            self.plot_results(df_features, forecasts)
+            
+            # Compile results
+            self.results = {
+                'cv_scores': cv_scores,
+                'evaluation_results': evaluation_results,
+                'forecasts': forecasts,
+                'feature_columns': self.feature_columns
+            }
+            
+            return self.results
+            
+        except Exception as e:
+            logger.error(f"Error in fit_predict: {e}")
+            raise
+
+def main():
+    """Main execution function."""
+    try:
+        # Load data
+        logger.info("Loading stock data...")
+        df = pd.read_csv("prices.csv")
+        
+        # Filter for Google (GOOG)
+        df_goog = df[df.symbol == "GOOG"].copy()
+        
+        if len(df_goog) == 0:
+            raise ValueError("No GOOG data found in the dataset")
+        
+        # Sort by date if date column exists
+        if 'date' in df_goog.columns:
+            df_goog['date'] = pd.to_datetime(df_goog['date'])
+            df_goog = df_goog.sort_values('date').reset_index(drop=True)
+        
+        logger.info(f"Loaded {len(df_goog)} records for GOOG")
+        logger.info(f"Date range: {df_goog['date'].min()} to {df_goog['date'].max()}")
+        
+        # Initialize and run forecaster
+        forecaster = AdvancedStockForecaster(forecast_horizon=5, test_size=0.2)
+        results = forecaster.fit_predict(df_goog)
+        
+        # Display summary results
+        print("\n" + "="*60)
+        print("STOCK FORECASTING RESULTS SUMMARY")
+        print("="*60)
+        
+        print(f"\nForecast Horizon: {forecaster.forecast_horizon} days")
+        print(f"Features Used: {len(forecaster.feature_columns)}")
+        
+        print(f"\nModel Performance (R² Score):")
+        for model_name, metrics in results['evaluation_results'].items():
+            print(f"  {model_name}: {metrics['R2_Score']:.4f}")
+        
+        print(f"\nForecasts for next {forecaster.forecast_horizon} days:")
+        for model_name, forecast in results['forecasts'].items():
+            avg_forecast = np.mean(forecast)
+            print(f"  {model_name}: ${avg_forecast:.2f} (avg)")
+        
+        print("\n" + "="*60)
+        
+        return results
+        
+    except Exception as e:
+        logger.error(f"Error in main execution: {e}")
+        raise
+
+if __name__ == "__main__":
+    results = main()
