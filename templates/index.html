@@ -551,35 +551,252 @@
                     </div>
                     {% endif %}
 {% if prediction_results %}
-<div class="signals-table">
-    <h3>📉 Prediction Summary</h3>
-    <table>
-        <thead>
-            <tr>
-                <th>Model</th>
-                <th>Predicted Price</th>
-                <th>R² Score</th>
-                <th>RMSE</th>
-                <th>MAE</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for model, value in prediction_results.predictions.items() %}
-            <tr>
-                <td>{{ model }} {% if model == prediction_results.best_model %}⭐{% endif %}</td>
-                <td>${{ "%.2f"|format(value) }}</td>
-                <td>{{ "%.2f"|format(prediction_results.model_scores[model]['R2']) }}</td>
-                <td>{{ "%.2f"|format(prediction_results.model_scores[model]['RMSE']) }}</td>
-                <td>{{ "%.2f"|format(prediction_results.model_scores[model]['MAE']) }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    <p style="margin-top: 10px;">
-        📊 <strong>Average Predicted Price:</strong> ${{ prediction_results.average_prediction }}<br>
-        🔺 <strong>Change from Current:</strong> {{ prediction_results.change_percent }}%
-    </p>
+<div class="prediction-container">
+    <h3>📈 ML Prediction Summary</h3>
+    
+    <!-- Prediction Summary Cards -->
+    <div class="prediction-summary">
+        <div class="prediction-card">
+            <div class="prediction-value">${{ "%.2f"|format(prediction_results.average_prediction) }}</div>
+            <div class="prediction-label">Average Predicted Price</div>
+            <div class="prediction-change {% if prediction_results.change_percent >= 0 %}positive{% else %}negative{% endif %}">
+                {{ '%+.2f'|format(prediction_results.change_percent) }}%
+                {% if prediction_results.change_percent >= 0 %}▲{% else %}▼{% endif %}
+            </div>
+        </div>
+        <div class="confidence-indicator">
+            <div class="confidence-bar" style="width: {{ (prediction_results.model_scores[prediction_results.best_model]['R2'] * 100)|round(1) }}%">
+                {{ (prediction_results.model_scores[prediction_results.best_model]['R2'] * 100)|round(1) }}% Confidence
+            </div>
+            <div class="confidence-note">Based on best performing model ({{ prediction_results.best_model }})</div>
+        </div>
+    </div>
+
+    <!-- Model Comparison Table -->
+    <div class="model-comparison">
+        <h4>Model Performance Comparison</h4>
+        <div class="table-responsive">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Model</th>
+                        <th>Prediction</th>
+                        <th title="R² Score - Higher is better (1.0 is perfect)">R² Score <span class="info-icon">ℹ️</span></th>
+                        <th title="Root Mean Squared Error - Lower is better">RMSE <span class="info-icon">ℹ️</span></th>
+                        <th title="Mean Absolute Error - Lower is better">MAE <span class="info-icon">ℹ️</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for model, value in prediction_results.predictions.items() %}
+                    <tr class="{% if model == prediction_results.best_model %}best-model{% endif %}">
+                        <td>
+                            {{ model }}
+                            {% if model == prediction_results.best_model %}
+                            <span class="best-badge">Best</span>
+                            {% endif %}
+                        </td>
+                        <td>${{ "%.2f"|format(value) }}</td>
+                        <td class="{% if prediction_results.model_scores[model]['R2'] >= 0.7 %}good-score
+                                 {% elif prediction_results.model_scores[model]['R2'] >= 0.4 %}medium-score
+                                 else %}poor-score{% endif %}">
+                            {{ "%.3f"|format(prediction_results.model_scores[model]['R2']) }}
+                        </td>
+                        <td>{{ "%.2f"|format(prediction_results.model_scores[model]['RMSE']) }}</td>
+                        <td>{{ "%.2f"|format(prediction_results.model_scores[model]['MAE']) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <!-- Prediction Notes -->
+    <div class="prediction-notes">
+        <p><strong>Note:</strong> Predictions are based on historical price patterns and technical indicators.</p>
+        <p>• R² Score indicates how well the model explains the price movements (1.0 is perfect)</p>
+        <p>• Lower RMSE and MAE values indicate better prediction accuracy</p>
+    </div>
 </div>
+
+<style>
+.prediction-container {
+    background: rgba(30, 30, 46, 0.8);
+    border-radius: 12px;
+    padding: 20px;
+    margin: 20px 0;
+    border: 1px solid rgba(100, 181, 246, 0.3);
+}
+
+.prediction-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    margin-bottom: 25px;
+    align-items: center;
+}
+
+.prediction-card {
+    background: linear-gradient(135deg, #2a2a40 0%, #1e1e30 100%);
+    border-radius: 10px;
+    padding: 20px;
+    min-width: 200px;
+    text-align: center;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    border: 1px solid rgba(100, 181, 246, 0.2);
+}
+
+.prediction-value {
+    font-size: 2rem;
+    font-weight: bold;
+    color: #64b5f6;
+    margin: 10px 0;
+}
+
+.prediction-label {
+    color: #b0bec5;
+    font-size: 0.9rem;
+    margin-bottom: 10px;
+}
+
+.prediction-change {
+    font-weight: bold;
+    padding: 5px 10px;
+    border-radius: 15px;
+    display: inline-block;
+    font-size: 0.9rem;
+}
+
+.prediction-change.positive {
+    background-color: rgba(76, 175, 80, 0.2);
+    color: #4caf50;
+}
+
+.prediction-change.negative {
+    background-color: rgba(244, 67, 54, 0.2);
+    color: #f44336;
+}
+
+.confidence-indicator {
+    flex: 1;
+    min-width: 250px;
+}
+
+.confidence-bar {
+    background: linear-gradient(90deg, #64b5f6, #42a5f5);
+    border-radius: 15px;
+    color: white;
+    padding: 10px;
+    text-align: center;
+    font-weight: bold;
+    margin-bottom: 5px;
+    transition: width 1s ease-in-out;
+    min-width: 50px;
+}
+
+.confidence-note {
+    font-size: 0.8rem;
+    color: #b0bec5;
+    text-align: center;
+}
+
+.model-comparison {
+    margin: 25px 0;
+}
+
+.model-comparison h4 {
+    color: #64b5f6;
+    margin-bottom: 15px;
+}
+
+.table-responsive {
+    overflow-x: auto;
+}
+
+.model-comparison table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10px 0;
+}
+
+.model-comparison th, .model-comparison td {
+    padding: 12px 15px;
+    text-align: left;
+    border-bottom: 1px solid rgba(100, 181, 246, 0.2);
+}
+
+.model-comparison th {
+    color: #64b5f6;
+    font-weight: 600;
+    position: relative;
+    cursor: help;
+}
+
+.model-comparison tr:hover {
+    background-color: rgba(100, 181, 246, 0.1);
+}
+
+.best-model {
+    background-color: rgba(100, 181, 246, 0.1);
+    border-left: 3px solid #64b5f6;
+}
+
+.best-badge {
+    background: #64b5f6;
+    color: white;
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    border-radius: 10px;
+    margin-left: 8px;
+    font-weight: normal;
+}
+
+.good-score { color: #4caf50; }
+.medium-score { color: #ff9800; }
+.poor-score { color: #f44336; }
+
+.info-icon {
+    cursor: help;
+    font-size: 0.8em;
+    opacity: 0.7;
+}
+
+.prediction-notes {
+    margin-top: 20px;
+    padding: 15px;
+    background: rgba(30, 30, 46, 0.5);
+    border-radius: 8px;
+    font-size: 0.9rem;
+    color: #b0bec5;
+    border-left: 3px solid #64b5f6;
+}
+
+.prediction-notes p {
+    margin: 5px 0;
+    line-height: 1.5;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .prediction-summary {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .prediction-card {
+        width: 100%;
+        margin-bottom: 15px;
+    }
+    
+    .model-comparison th, .model-comparison td {
+        padding: 8px 10px;
+        font-size: 0.9rem;
+    }
+    
+    .prediction-value {
+        font-size: 1.8rem;
+    }
+}
+</style>
 {% endif %}
 
 {% if signals %}

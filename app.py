@@ -152,71 +152,116 @@ class StockPredictor:
         
     def prepare_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """Prepare comprehensive feature set with technical indicators."""
-        df = df.copy()
+        try:
+            df = df.copy()
+            
+            # Basic price features
+            df['price_change'] = df['Close'].pct_change()
+            df['price_change_lag1'] = df['price_change'].shift(1)
+            df['price_change_lag2'] = df['price_change'].shift(2)
+            df['high_low_ratio'] = df['High'] / df['Low']
+            df['open_close_ratio'] = df['Open'] / df['Close']
+            df['close_open_ratio'] = df['Close'] / df['Open']
+            
+            # Add moving averages
+            df = TechnicalIndicators.moving_averages(df)
+            
+            # Add RSI
+            df['RSI'] = TechnicalIndicators.rsi(df)
+            
+            # Add MACD
+            macd, signal, histogram = TechnicalIndicators.macd(df)
+            df['MACD'] = macd
+            df['MACD_Signal'] = signal
+            df['MACD_Histogram'] = histogram
+            
+            # Add Bollinger Bands
+            bb_upper, bb_lower, bb_middle = TechnicalIndicators.bollinger_bands(df)
+            df['BB_Upper'] = bb_upper
+            df['BB_Lower'] = bb_lower
+            df['BB_Middle'] = bb_middle
+            df['BB_Width'] = (bb_upper - bb_lower) / bb_middle
+            
+            # Add volatility
+            for window in [5, 10, 20]:
+                if len(df) > window:
+                    df[f'Volatility_{window}'] = df['Close'].pct_change().rolling(window=window).std()
+            
+            # Add momentum
+            for period in [5, 10, 20]:
+                if len(df) > period:
+                    df[f'Momentum_{period}'] = df['Close'].pct_change(periods=period)
+            
+            # Add volume features if available
+            if 'Volume' in df.columns:
+                df['Volume_MA_5'] = df['Volume'].rolling(window=5).mean()
+                df['Volume_MA_20'] = df['Volume'].rolling(window=20).mean()
+                df['Volume_Ratio'] = df['Volume_MA_5'] / df['Volume_MA_20']
+            
+            # Add target variable (future prices)
+            df['target'] = df['Close'].shift(-self.forecast_horizon)
+            
+            # Drop any remaining NaN values
+            df = df.dropna()
+            
+            return df
+            
+        except Exception as e:
+            logger.error(f"Error in prepare_features: {str(e)}", exc_info=True)
+            raise
         
-        # Add basic price features
-        df['price_change'] = df['Close'].pct_change()
-        df['price_change_lag1'] = df['price_change'].shift(1)
-        df['high_low_ratio'] = df['High'] / df['Low']
-        df['open_close_ratio'] = df['Open'] / df['Close']
-        
-        # Add moving averages
-        df = TechnicalIndicators.moving_averages(df)
-        
-        # Add RSI
-        df['RSI'] = TechnicalIndicators.rsi(df)
-        
-        # Add MACD
-        macd, signal, histogram = TechnicalIndicators.macd(df)
-        df['MACD'] = macd
-        df['MACD_Signal'] = signal
-        df['MACD_Histogram'] = histogram
-        
-        # Add Bollinger Bands
-        bb_upper, bb_lower, bb_middle = TechnicalIndicators.bollinger_bands(df)
-        df['BB_Upper'] = bb_upper
-        df['BB_Lower'] = bb_lower
-        df['BB_Width'] = (bb_upper - bb_lower) / bb_middle
-        
-        # Add volatility
-        df['Volatility_10'] = df['Close'].rolling(window=min(10, len(df)//2)).std()
-        
-        # Add momentum
-        momentum_period = min(5, len(df)//3)
-        if momentum_period > 0:
-            df['Momentum'] = df['Close'] / df['Close'].shift(momentum_period) - 1
-        
-        # Add target variable (future prices)
-        df['target'] = df['Close'].shift(-self.forecast_horizon)
-        
-        return df
-    
     def select_features(self, df: pd.DataFrame) -> List[str]:
         """Select relevant features for modeling."""
-        exclude_cols = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume', 'target']
-        feature_cols = [col for col in df.columns if col not in exclude_cols]
+        try:
+            # Always exclude these columns
+            exclude_cols = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume', 'target']
+            
+            # Get all available features
+            all_features = [col for col in df.columns if col not in exclude_cols]
+            
+            if not all_features:
+                logger.warning("No features available after basic filtering")
+                return []
+            
+            # Remove features with too many NaN values (more than 30%)
+            nan_threshold = 0.3
+            valid_features = [col for col in all_features 
+                           if df[col].isna().sum() / len(df) < nan_threshold]
+            
+            # If we still have no features, try to keep at least the price-based ones
+            if not valid_features:
+                logger.warning("Falling back to basic price features")
+                valid_features = [col for col in all_features 
+                               if any(x in col.lower() for x in ['price', 'close', 'rsi', 'macd'])]
+            
+            logger.info(f"Selected {len(valid_features)} features for modeling")
+            return valid_features
+            
+        except Exception as e:
+            logger.error(f"Error in select_features: {str(e)}", exc_info=True)
+            return []
         
-        # Remove features with too many NaN values
-        nan_threshold = 0.5
-        feature_cols = [col for col in feature_cols 
-                       if df[col].isna().sum() / len(df) < nan_threshold]
-        
-        return feature_cols
-    
     def train_and_predict(self, df: pd.DataFrame) -> Dict:
         """Train models and make predictions."""
         try:
+            logger.info(f"Starting prediction with {len(df)} data points")
+            
             # Prepare features
             df_features = self.prepare_features(df)
-            df_clean = df_features.dropna()
             
-            if len(df_clean) < 30:
-                raise ValueError("Insufficient clean data for prediction")
+            if len(df_features) < 30:
+                raise ValueError(f"Insufficient clean data for prediction (only {len(df_features)} points)")
             
-            self.feature_columns = self.select_features(df_clean)
+            # Select features
+            self.feature_columns = self.select_features(df_features)
             
-            X = df_clean[self.feature_columns].values
-            y = df_clean['target'].values
+            if not self.feature_columns:
+                raise ValueError("No valid features selected for modeling")
+                
+            logger.info(f"Using features: {', '.join(self.feature_columns[:10])}...")
+            
+            X = df_features[self.feature_columns].values
+            y = df_features['target'].values
             
             # Remove rows where target is NaN
             valid_idx = ~np.isnan(y)
@@ -224,35 +269,53 @@ class StockPredictor:
             y = y[valid_idx]
             
             if len(X) < 20:
-                raise ValueError("Insufficient data after cleaning")
-            
-            # Scale features
-            X_scaled = self.scaler.fit_transform(X)
+                raise ValueError(f"Insufficient data after cleaning (only {len(X)} points)")
             
             # Split data (80% train, 20% test)
-            split_idx = int(len(X_scaled) * 0.8)
-            X_train, X_test = X_scaled[:split_idx], X_scaled[split_idx:]
+            split_idx = int(len(X) * 0.8)
+            X_train, X_test = X[:split_idx], X[split_idx:]
             y_train, y_test = y[:split_idx], y[split_idx:]
             
-            # Train models
+            # Scale features (fit only on training data to prevent data leakage)
+            X_train_scaled = self.scaler.fit_transform(X_train)
+            X_test_scaled = self.scaler.transform(X_test)
+            
+            # Train models with improved configurations
             models_config = {
                 'Linear Regression': LinearRegression(),
-                'Random Forest': RandomForestRegressor(n_estimators=50, max_depth=8, random_state=42),
-                'Gradient Boosting': GradientBoostingRegressor(n_estimators=50, max_depth=4, random_state=42)
+                'Random Forest': RandomForestRegressor(
+                    n_estimators=100,
+                    max_depth=10,
+                    min_samples_split=5,
+                    random_state=42,
+                    n_jobs=-1
+                ),
+                'Gradient Boosting': GradientBoostingRegressor(
+                    n_estimators=100,
+                    max_depth=4,
+                    learning_rate=0.1,
+                    random_state=42
+                )
             }
             
             predictions = {}
             
             for name, model in models_config.items():
                 try:
-                    model.fit(X_train, y_train)
-                    y_pred = model.predict(X_test)
+                    logger.info(f"Training {name} with {len(X_train_scaled)} samples...")
+                    
+                    # Train model
+                    model.fit(X_train_scaled, y_train)
+                    
+                    # Make predictions on test set
+                    y_pred = model.predict(X_test_scaled)
                     
                     # Calculate metrics
                     r2 = r2_score(y_test, y_pred)
                     rmse = np.sqrt(mean_squared_error(y_test, y_pred))
                     mae = mean_absolute_error(y_test, y_pred)
                     
+                    # Store model and scores
                     self.models[name] = model
                     self.model_scores[name] = {
                         'R2': max(0, min(1, r2)),  # Clamp between 0 and 1
@@ -260,21 +323,29 @@ class StockPredictor:
                         'MAE': mae
                     }
                     
-                    # Make prediction for next period
+                    logger.info(f"{name} - R2: {r2:.4f}, RMSE: {rmse:.4f}, MAE: {mae:.4f}")
+                    
+                    # Make prediction for next period using all available data
+                    X_scaled = np.vstack([X_train_scaled, X_test_scaled])
                     if len(X_scaled) > 0:
                         last_features = X_scaled[-1].reshape(1, -1)
                         pred = model.predict(last_features)[0]
                         predictions[name] = pred
+                        logger.info(f"{name} predicted price: {pred:.2f}")
                     
                 except Exception as e:
-                    logger.error(f"Error training {name}: {e}")
+                    logger.error(f"Error training {name}: {str(e)}", exc_info=True)
                     continue
             
+            if not predictions:
+                raise ValueError("No models were successfully trained")
+                
+            logger.info(f"Prediction completed successfully with {len(predictions)} models")
             return predictions
             
         except Exception as e:
-            logger.error(f"Prediction error: {e}")
-            return {}
+            logger.error(f"Prediction error: {str(e)}", exc_info=True)
+            raise  # Re-raise to be handled by the caller
 
 def clean_dataframe(df):
     """Clean dataframe to handle data type issues"""
